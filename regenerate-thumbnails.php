@@ -135,6 +135,7 @@ class RegenerateThumbnails {
 		// For the bulk action dropdowns.
 		add_action( 'admin_head-upload.php', array( $this, 'add_bulk_actions_via_javascript' ) );
 		add_action( 'admin_action_bulk_regenerate_thumbnails', array( $this, 'bulk_action_handler' ) ); // Top drowndown.
+		add_action( 'admin_action_bulk_restore_image', array( $this, 'bulk_action_handler' ) ); // Top drowndown.
 		add_action( 'admin_action_-1', array( $this, 'bulk_action_handler' ) ); // Bottom dropdown.
 
 		// Add a regenerate button to the non-modal edit media page.
@@ -431,7 +432,7 @@ class RegenerateThumbnails {
 		}
 
 		$actions['regenerate_thumbnails'] = '<a href="' . esc_url( $this->create_page_url( $post->ID ) ) . '" title="' . esc_attr( __( 'Regenerate the thumbnails for this single image', 'regenerate-thumbnails' ) ) . '">' . _x( 'Regenerate Thumbnails', 'action for a single image', 'regenerate-thumbnails' ) . '</a>';
-
+		$actions['restore_image'] = '<a href="' . esc_url( add_query_arg( 'restore', '1', $this->create_page_url( $post->ID ) ) ) . '" title="' . esc_attr( __( 'Restore the original image and regenerate he thumbnails for this single image', 'regenerate-thumbnails' ) ) . '">' . _x( 'Restore Original Image', 'action for a single image', 'regenerate-thumbnails' ) . '</a>';
 		return $actions;
 	}
 
@@ -494,6 +495,11 @@ class RegenerateThumbnails {
 						.attr('value', 'bulk_regenerate_thumbnails')
 						.text('<?php echo esc_js( _x( 'Regenerate Thumbnails', 'bulk actions dropdown', 'regenerate-thumbnails' ) ); ?>')
 				);
+                                $('select[name^="action"] option:last-child').before(
+                                        $('<option/>')
+                                                .attr('value', 'bulk_restore_image')
+                                                .text('<?php echo esc_js( _x( 'Restore Original Image', 'bulk actions dropdown', 'regenerate-thumbnails' ) ); ?>')
+                                );
 			});
 		</script>
 		<?php
@@ -502,30 +508,51 @@ class RegenerateThumbnails {
 	/**
 	 * Handles the submission of the new bulk actions entry and redirects to the admin page with the selected attachment IDs.
 	 */
-	public function bulk_action_handler() {
-		if (
-			empty( $_REQUEST['action'] ) ||
-			empty( $_REQUEST['action2'] ) ||
-			( 'bulk_regenerate_thumbnails' != $_REQUEST['action'] && 'bulk_regenerate_thumbnails' != $_REQUEST['action2'] ) ||
-			empty( $_REQUEST['media'] ) ||
-			! is_array( $_REQUEST['media'] )
-		) {
-			return;
-		}
+        public function bulk_action_handler() {
+                if (
+                        empty( $_REQUEST['action'] ) ||
+                        empty( $_REQUEST['action2'] ) 
+                ) {
+                        return;
+                }
+                if (
+                        empty( $_REQUEST['media'] ) ||
+                        ! is_array( $_REQUEST['media'] )
+                ) {
+                        return;
+                }
+                $action = false;
+                if ( 'bulk_regenerate_thumbnails' === $_REQUEST['action'] || 'bulk_regenerate_thumbnails' === $_REQUEST['action2'] ) {
+                        $action = 'bulk_regenerate_thumbnails';
+                }
 
-		check_admin_referer( 'bulk-media' );
+                if ( 'bulk_restore_image' === $_REQUEST['action'] || 'bulk_restore_image' === $_REQUEST['action2'] ) {
+                        $action = 'bulk_restore_image';
+                }
+                if ( ! $action ) {
+                        return;
+                }
 
-		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page' => 'regenerate-thumbnails',
-					'ids'  => rawurlencode( implode( ',', array_map( 'intval', $_REQUEST['media'] ) ) ),
-				),
-				admin_url( 'tools.php' )
-			)
-		);
+                check_admin_referer( 'bulk-media' );
+                $ids = array_map( 'intval', $_REQUEST['media'] );
+                if ( 'bulk_restore_image' === $action ) {
+                        include ABSPATH . '/wp-admin/includes/image-edit.php';
+                        foreach ( $ids as $post_id ){
+                                wp_restore_image( $post_id );
+                        }
+                }
 
-		exit();
+                wp_safe_redirect(
+                        add_query_arg(
+                                array(
+                                        'page' => 'regenerate-thumbnails',
+                                        'ids'  => rawurlencode( implode( ',', $ids ) ),
+                                ),
+                                admin_url( 'tools.php' )
+                        )
+                );
+
+                exit();
 	}
 
 	/**
